@@ -3,4 +3,5 @@
 
 2、Markdown
 
-![](./images/奋斗.png)
+下面有图片：
+![](./images/1.png)
