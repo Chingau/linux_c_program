@@ -8,12 +8,17 @@ posix 定时器是为了解决间隔定时器 itimer 存在的以下问题：
 POSIX定时器提供的定时器 API 如下：
 
 ```c
+#include <signal.h>
+#include <time.h>
+
 int timer_create(clockid_t clock_id, struct sigevent *evp, timer_t *timerid)；
 int timer_settime(timer_t timerid, int flags, const struct itimerspec *value, struct itimerspect *ovalue);
 int timer_gettime(timer_t timerid,struct itimerspec *value);
 int timer_getoverrun(timer_t timerid);
 int timer_delete (timer_t timerid);
 ```
+
+<font size=5 color=red>链接时需要加 -lrt 参数。</font>
 
 ## struct itimerspec 结构
 其中时间结构体 itimerspec 和 itimer 的 itimerval 结构体用处及含义类似，只是提供了 ns 级别的精度；itimerspec 结构体定义如下：
@@ -39,7 +44,7 @@ struct timespec {
 int timer_create(clockid_t clock_id, struct sigevent *evp, timer_t *timerid);
 ```
 
-功能：创建一个 posix timer；在创建的时候，需要指出定时器的类型，定时器超时通知机制。创建成功后通过参数返回创建的定时器的 ID。
+功能：创建一个 posix timer；在创建的时候，需要指出定时器的类型，定时器超时通知机制。创建成功后通过参数返回创建的定时器的 ID。成功返回0，失败返回-1且更新 errno 变量。
 
 `clock_id:` 参数 clock_id 用来指定定时器时钟的类型，时钟类型有以下6种：
 |时钟类型|说明|
@@ -68,7 +73,7 @@ union sigval {
 }
 ```
 
-如果 sigevent 传入 NULL，那么定时器到期会产生默认的信号，对 CLOCK_REALTIMER 来说，默认信号就是 SIGALRM，如果要产生除默认信号之外的其他信号，程序必须将 evp->sigev_signo 设置为期望的信号码。
+如果 sigevent 传入 NULL，那么定时器到期会产生默认的信号，对 CLOCK_REALTIME 来说，默认信号就是 SIGALRM，如果要产生除默认信号之外的其他信号，程序必须将 evp->sigev_signo 设置为期望的信号码。
 
 如果几个定时器产生了同一个信号，处理程序可以用 sigev_value 来区分是哪个定时器产生了信号。要实现这种功能，程序必须在为信号安装处理程序时，使用 struct sigaction 的成员 sa_flags 中的标志符 SA_SIGINFO。
 
@@ -91,11 +96,11 @@ int timer_settime(timer_t timerid, int flags, const struct itimerspec *value, st
 `flags:` 该参数标识到期时间是一个绝对时间还是一个相对时间。flags 可取值为 `TIMER_ABSTIME` 则 `value` 的值为一个`绝对时间`；否则，`value` 为一个`相对时间`。
 
 ```c
-#define TIMER_ABSTIME   1
+#define TIMER_ABSTIME   1       //绝对时间
 //所以我们设置flags的值为0时可以设置为一个相对时间
 ```
 
-`itimerspec:` 设置的超时时间，一般设置方式如下：
+`value:` 设置的超时时间，一般设置方式如下：
 
 ```c
 timer_t timer;
@@ -122,6 +127,17 @@ ts.it_interval.tv_nsec = ts.it_value.tv_nsec;
 timer_settime(timer, TIMER_ABSTIME, &ts, NULL); /* start absolute timer */
 ```
 
+`ovalue:` 如果 ovalue 的值不是 NULL，则之前的定时器到期时间会被存入其所提供的 itimerspec。如果定时器之前处在启动状态，则此结构的成员全都会被设定成0。
+
+## timer_gettimer()
+函数原型：
+
+```c
+int timer_gettime(timer_t timerid, struct itimerspec *value);
+```
+
+获得一个活动定时器的剩余时间。
+
 ## timer_getoverrun()
 函数原型：
 
@@ -144,7 +160,7 @@ int timer_delete (timer_t timerid);
 
 删除一个定时器：一次成功的 timer_delete() 调用会销毁关联到 timerid 的定时器并返回0。执行失败时，此调用会返回-1并将errno设定为 EINVAL，这个唯一的错误情况代表 timerid 不是一个有效的定时器。
 
-posix 定时器通过调用内核的 posix_timer 进行实现，但 glibc 对 posix 进行了一定的封装，例如，如果 posix timer 到期通知方式被设置为 SIGEV_THREAD 时，glibc 需要自己完成一些辅助工作，因为内核无法在 timer 到期时启动一上新的线程。
+posix 定时器通过调用内核的 posix_timer 进行实现，但 glibc 对 posix 进行了一定的封装，例如，如果 posix timer 到期通知方式被设置为 SIGEV_THREAD 时，glibc 需要自己完成一些辅助工作，因为内核无法在 timer 到期时启动一个新的线程。
 
 ```c
 int timer_create (clock_id, evp, timerid)
@@ -170,3 +186,13 @@ int timer_create (clock_id, evp, timerid)
 可以看到 glibc 发现用户需要启动新线程通知时，会自动调用 pthread_once 启动一个辅助线程(__start_helper_thread)，用 sigev_notify_attributes 中指定的属性设置该辅助线程。
 
 然后 glibc 启动一个普通的 POSIX Timer，将其通知方式设置为：SIGEV_SIGNAL | SIGEV_THREAD_ID。这样就可以保证内核在 timer 到期时通知辅助线程。通知的 Signal 号为 SIGTIMER，并且携带一个包含了到期函数指针的数据。这样，当该辅助 Timer 到期时，内核会通过 SIGTIMER 通知辅助线程，辅助线程可以在信号携带的数据中得到用户设定的到期处理函数指针，利用该指针，辅助线程调用 pthread_create() 创建一个新的线程来调用该处理函数。这样就实现了 POSIX 的定义。
+
+这里有2个例子：
+
+例1：程序运行3s后，每隔1s打印当前时间，程序源码见文件 posix_timer1.c，运行结果如下图：
+
+![](images/Snipaste_2022-08-29_21-27-33.png)
+
+例2：程序运行3s后，每隔1s打印当前时间，同时发送指定的信号，程序源码见文件 posix_timer2.c，运行结果如下图：
+
+![](images/Snipaste_2022-08-29_21-31-18.png)
