@@ -270,3 +270,11 @@ int tcom_send_msg(const TCOM_MSG_HEADER *msghdr, const void *msgbody)
 上面这个例子的调用流程如下：首先其它模块调用 tcom_send_msg() 函数把消息头写到 MPU_MID_TCOM 的写端(如果消息体不为空的话同时把消息体写入到队列中)，MPU_MID_TCOM 从读端读取消息头(如果消息体不为空的话同时也会从队列中读出消息体)；然后根据消息头中的 receiver 把消息再转发给对应的模块，具体流程如下图：
 
 ![](images/Snipaste_2022-08-29_22-47-55.png)
+
+同目录下有关于tcom通信的框架代码，名为 project 的文件夹，输入 make 命令可以编译代码，最终生成可执行文件 app，运行 ./app 即可。
+
+此框架代码使用一个 test 模块测试效果，test 模块在初始化时会创建一个定时器，然后定时器每一隔1s超时，在超时处理程序中会向 test 模块自身发送一条消息，而 test 收到自身发来的消息后打印出来。
+
+根据前面的分析，定时器超时发送消息给 test 模块时会先发送给 TCOM 模块，然后由 TCOM 模块转发给 test 模块，看下面的运行结果可以证明这个结论。
+
+![](images/Snipaste_2022-09-03_20-01-10.png)
