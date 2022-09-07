@@ -17,7 +17,7 @@ INC := -I$(ROOT_PATH)/include
 OBJ := $(patsubst %.c, %.o, $(SRC))
 
 $(TARGET):$(OBJ)
-	$(CC) $(OBJ) -o $@
+	$(CC) $(OBJ) -o $@ $(CFLAGS)
 
 %.o:%.c
 	$(CC) $(INC) -c $< -o $@ $(CFLAGS)
