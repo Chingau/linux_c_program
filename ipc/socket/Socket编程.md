@@ -65,8 +65,11 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size);
 参数：
 
 **af**: 取值为 AF_INET(转换IPV4) 或 AF_INET6(转换IPV6)
+
 **src**: 要转换的源数据，即点分十进制的IP地址或网络字节序
+
 **dst**：转换后的结果
+
 **size**：转换后的 dst 字符串的大小
 
 ## 2.3 sockaddr数据结构
@@ -172,17 +175,103 @@ SOCK_RDM 这个类型是很少使用的，在大部分的操作系统上没有�
 socket() 打开一个网络通信端口，如果成功的话，就像 open() 一样返回一个文件描述符，应用程序可以像读写文件一样用 read/write 在网络上收发数据，如果 socket() 调用出错则返回 -1。对于 IPV4，domain 参数指定为 AF_INET。对于 TCP 协议，type 参数指定为 SOCK_STREAM，表示面向流的传输协议。如果是 UDP 协议，则 type 参数指定为 SOCK_DGRAM，表示面向数据报的传输协议。protocol 参数的介绍从略，指定为 0 即可。
 
 ## 3.3 bind 函数
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+
+参数：
+
+**sockfd:** socket 文件描述符
+
+**addr:** 构造出的 IP 地址和端口号
+
+**addrlen:** sizeof(addr) 的长度
+
+**返回值：** 成功返回0，失败返回-1，并设置 errno
+
+服务器程序所监听的网络地址和端口号通常是固定不变的，客户端程序得知服务器程序的地址和端口号后就可以向服务器发起连接，因此服务器需要调用 bind 绑定一个固定的网络地址和端口号。
+
+bind() 的作用是将参数 sockfd 和 addr 绑定在一起，使 sockfd 这个用于网络通信的文件描述符监听 addr 所描述的地址和端口号。前面讲过，struct sockaddr * 是一个通用指针类型，addr 参数实际上可以接受多种协议的 sockaddr 结构体，而它们的长度各不相同，所以需要第三个参数 addrlen 指定结构体的长度。
 
 ## 3.4 listen 函数
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+int listen(int sockfd, int backlog);
+```
+
+参数：
+
+**sockfd:** socket 文件描述符
+
+**backlog:** 排队建立3次握手队列和刚刚建立3次握手队列的链接数之和
+
+**返回值：** 成功返回0，失败返回-1
+
+查看系统默认的 backlog，使用命令 <font color=red>cat /proc/sys/net/ipv4/tcp_max_syn_backlog</font>
+
+典型的服务器程序可以同时服务于多个客户端，当有客户端发起连接时，服务器调用的 accept() 返回并接受这个连接，如果有大量的客户端发起连接而服务器来不及处理，尚未 accept 的客户端就处于连接等待状态，listen() 声明 sockfd 处于监听状态，并且最多允许有 backlog 个客户端处于连接等待状态，如果接收到更多的连接请求就忽略。
 
 ## 3.5 accept 函数
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+```
+
+参数：
+
+**sockfd:** socket 文件描述符
+
+**addr:** 传出参数，返回连接客户端地址信息，含 IP 地址和端口号
+
+**addrlen:** 传入传出参数(值-结果)，传入 sizeof(addr) 大小，函数返回时返回真正接收到地址结构体的大小
+
+**返回值：** 成功返回一个新的 socket 文件描述符，用于和客户端通信，失败返回-1，并设置 errno。
+
+三次握手完成后，服务器调用 accept() 接受连接，如果服务器调用 accept() 时还没有客户端的连接请求，就阻塞等待直到有客户端连接上来。addr 是一个传出参数，accept() 返回时传出客户端的地址和端口号。addrlen 参数是一个传入传出参数，传入的是调用者提供的缓冲区 addr 的长度以避免缓冲区溢出问题，传出的是客户端地址结构体的实际长度(有可能没有占满调用者提供的缓冲区)。如果给 addr 参数传 NULL，表示不关心客户端的地址。
 
 ## 3.6 connect 函数
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+
+参数：
+
+**sockfd:** socket 文件描述符
+
+**addr:** 传入参数，指定服务器端地址信息，含 IP 地址和端口号
+
+**addrlen:** 传入参数，传入 sizeof(addr) 大小
+
+**返回值：** 成功返回0，失败返回-1，并设置errno
+
+客户端需要调用 connect() 连接服务器，connect 和 bind 的参数形式一致，区别在于 bind 的参数是自己的地址，而 connect 的参数是对方的地址。
 
 # 4. C/S模型-TCP
-## 4.1 server
+再来回顾一下 socket 模型创建流程图，如下：
 
-## 4.2 client
+![](images/Snipaste_2022-09-13_23-38-26.png)
+
+这里实现一个小功能，客户端发送给服务器一串小写字母，服务端收到后将其转换成大写字母并回传给客户端，客户端将其结果打印出来。
+
+其程序运行结果如下图：
+
+服务端程序写好之后可以直接使用 `nc` 命令测试，运行服务端程序，然后重新开个终端，输入 nc 命令即可测试，如下：
+
+![](images/Snipaste_2022-09-15_00-00-48.png)
+
+使用客户端配合测试结果如下：
+
+![](images/Snipaste_2022-09-15_00-33-07.png)
+
+![](images/Snipaste_2022-09-15_00-33-16.png)
+
+服务器端程序见 ./TCP/server.c ; 客户端程序见 ./TCP/client.c
 
 # 5. 出错处理封装函数
 ## 5.1 wrap.c
