@@ -21,9 +21,11 @@ int main(int argc, const char *argv[])
         return -1;
     }
 
+    memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(SERV_PORT);
-    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    //serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    inet_pton(AF_INET, SERV_IP, &serv_addr.sin_addr.s_addr);
     if ((connect(lfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) < 0) {
         perror("connect failed.");
         close(lfd);
